@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
+import java.net.SocketException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.util.Arrays;
@@ -280,6 +281,18 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
   public boolean onRequestException(HttpClientContext context,
                                     HttpUriRequest request,
                                     Throwable error) {
+    // Some media edges are simply not routable from here, which surfaces as a
+    // socket error rather than a status code. The relay reaches them, so give it
+    // the same single retry a refusal gets.
+    if (!DataFormatTools.isNullOrEmpty(innertubeRelayUrl)
+        && error instanceof SocketException
+        && request.getURI().getHost() != null
+        && request.getURI().getHost().contains("googlevideo")
+        && context.getAttribute(ATTRIBUTE_MEDIA_VIA_RELAY) == null) {
+      context.setAttribute(ATTRIBUTE_MEDIA_VIA_RELAY, true);
+      return true;
+    }
+
     // Always retry once in case of connection reset exception.
     if (HttpClientTools.isConnectionResetException(error)) {
       if (context.getAttribute(ATTRIBUTE_RESET_RETRY) == null) {
