@@ -15,7 +15,9 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -26,6 +28,7 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
   private static final Logger log = LoggerFactory.getLogger(YoutubeHttpContextFilter.class);
 
   private static final String ATTRIBUTE_RESET_RETRY = "isResetRetry";
+  private static final String ATTRIBUTE_MEDIA_VIA_RELAY = "mediaViaRelay";
   public static final String ATTRIBUTE_USER_AGENT_SPECIFIED = "clientUserAgent";
   public static final String ATTRIBUTE_VISITOR_DATA_SPECIFIED = "clientVisitorData";
   public static final String ATTRIBUTE_CIPHER_REQUEST_SPECIFIED = "remoteCipherRequest";
@@ -82,6 +85,42 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
    * those rules match on the original YouTube host and would stop firing the
    * moment the URI is rewritten.
    */
+  /**
+   * Sends a media request back out through the relay after YouTube refused it.
+   *
+   * Stream URLs are handed out to whoever asked for them, and answering 403 to
+   * a different address is a decision YouTube makes per video. Fetching the
+   * audio directly is still right for most tracks, so this only kicks in once a
+   * direct attempt has actually been refused.
+   */
+  private void applyMediaRelay(HttpUriRequest request) {
+    if (DataFormatTools.isNullOrEmpty(innertubeRelayUrl) || !(request instanceof HttpRequestBase)) {
+      return;
+    }
+
+    URI uri = request.getURI();
+
+    if (uri.getHost() == null || !uri.getHost().contains("googlevideo")) {
+      return;
+    }
+
+    String relayed = innertubeRelayUrl + "/m?url=" + urlEncode(uri.toString());
+    log.debug("Retrying refused media request via {}", innertubeRelayUrl);
+    ((HttpRequestBase) request).setURI(URI.create(relayed));
+
+    if (!DataFormatTools.isNullOrEmpty(innertubeRelayPass)) {
+      request.setHeader("X-Relay-Auth", innertubeRelayPass);
+    }
+  }
+
+  private static String urlEncode(String value) {
+    try {
+      return URLEncoder.encode(value, "UTF-8");
+    } catch (UnsupportedEncodingException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
   private void applyInnertubeRelay(HttpUriRequest request) {
     if (DataFormatTools.isNullOrEmpty(innertubeRelayUrl) || !(request instanceof HttpRequestBase)) {
       return;
@@ -136,6 +175,14 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
                         boolean isRepetition) {
     if (!isRepetition) {
       context.removeAttribute(ATTRIBUTE_RESET_RETRY);
+    }
+
+    if (context.getAttribute(ATTRIBUTE_MEDIA_VIA_RELAY) == Boolean.TRUE) {
+      // Leave the marker behind rather than clearing it, so a relayed request
+      // that is also refused ends there instead of looping.
+      context.setAttribute(ATTRIBUTE_MEDIA_VIA_RELAY, false);
+      applyMediaRelay(request);
+      return;
     }
 
     retryCounter.handleUpdate(context, isRepetition);
@@ -215,10 +262,17 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
   public boolean onRequestResponse(HttpClientContext context,
                                    HttpUriRequest request,
                                    HttpResponse response) {
+    // A refused media URL is worth exactly one more attempt, from the address
+    // that obtained it. Anything else, including a second refusal, is final.
+    if (!DataFormatTools.isNullOrEmpty(innertubeRelayUrl)
+        && response.getStatusLine().getStatusCode() == 403
+        && request.getURI().getHost() != null
+        && request.getURI().getHost().contains("googlevideo")
+        && context.getAttribute(ATTRIBUTE_MEDIA_VIA_RELAY) == null) {
+      context.setAttribute(ATTRIBUTE_MEDIA_VIA_RELAY, true);
+      return true;
+    }
 
-//    if (tokenTracker.isTokenFetchContext(context) || retryCounter.getRetryCount(context) >= 1) {
-//      return false;
-//    }
     return false;
   }
 
