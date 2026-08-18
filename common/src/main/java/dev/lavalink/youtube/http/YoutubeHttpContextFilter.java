@@ -176,11 +176,16 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
                         boolean isRepetition) {
     if (!isRepetition) {
       context.removeAttribute(ATTRIBUTE_RESET_RETRY);
+      // Contexts are pooled per thread and outlive a single track, so the
+      // "already retried" marker has to be dropped when a fresh request starts.
+      // Leaving it set silently disables the media fallback for every later
+      // request on that thread.
+      context.removeAttribute(ATTRIBUTE_MEDIA_VIA_RELAY);
     }
 
     if (context.getAttribute(ATTRIBUTE_MEDIA_VIA_RELAY) == Boolean.TRUE) {
-      // Leave the marker behind rather than clearing it, so a relayed request
-      // that is also refused ends there instead of looping.
+      // Downgrade rather than clear, so a relayed request that is also refused
+      // ends there instead of looping.
       context.setAttribute(ATTRIBUTE_MEDIA_VIA_RELAY, false);
       applyMediaRelay(request);
       return;
