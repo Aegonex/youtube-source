@@ -6,6 +6,7 @@ import com.sedmelluq.discord.lavaplayer.tools.DataFormatTools;
 import dev.lavalink.youtube.clients.skeleton.Client;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.CookieStore;
+import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.impl.client.BasicCookieStore;
@@ -13,6 +14,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.net.URI;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import static dev.lavalink.youtube.http.YoutubeOauth2Handler.OAUTH_INJECT_CONTEXT_ATTRIBUTE;
 
@@ -33,6 +39,19 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
   private String remoteCipherUserAgent;
   private String pluginVersion;
 
+  private String innertubeRelayUrl;
+  private String innertubeRelayPass;
+
+  // Only API traffic is worth relaying; media is both unblocked and far too
+  // heavy to send on a detour.
+  private static final Set<String> RELAYED_HOSTS = new HashSet<>(Arrays.asList(
+      "youtubei.googleapis.com",
+      "www.youtube.com",
+      "m.youtube.com",
+      "music.youtube.com",
+      "www.youtube-nocookie.com"
+  ));
+
   public void setTokenTracker(@NotNull YoutubeAccessTokenTracker tokenTracker) {
     this.tokenTracker = tokenTracker;
   }
@@ -44,6 +63,49 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
 
   public void setOauth2Handler(@NotNull YoutubeOauth2Handler oauth2Handler) {
     this.oauth2Handler = oauth2Handler;
+  }
+
+  /**
+   * @param url base url of an innertube relay, or null to call YouTube directly.
+   * @param pass shared secret the relay expects, if it requires one.
+   */
+  public void setInnertubeRelay(@Nullable String url, @Nullable String pass) {
+    this.innertubeRelayUrl = url != null && url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    this.innertubeRelayPass = pass;
+  }
+
+  /**
+   * Sends the request to the relay instead of YouTube, preserving path and query
+   * so the relay can replay it verbatim.
+   *
+   * <p>This runs last, after every other rule in {@link #onRequest}, because
+   * those rules match on the original YouTube host and would stop firing the
+   * moment the URI is rewritten.
+   */
+  private void applyInnertubeRelay(HttpUriRequest request) {
+    if (DataFormatTools.isNullOrEmpty(innertubeRelayUrl) || !(request instanceof HttpRequestBase)) {
+      return;
+    }
+
+    URI uri = request.getURI();
+    String host = uri.getHost();
+
+    if (host == null || !RELAYED_HOSTS.contains(host)) {
+      return;
+    }
+
+    StringBuilder relayed = new StringBuilder(innertubeRelayUrl).append("/p/").append(host).append(uri.getRawPath());
+
+    if (uri.getRawQuery() != null) {
+      relayed.append('?').append(uri.getRawQuery());
+    }
+
+    log.debug("Relaying {} via {}", uri, innertubeRelayUrl);
+    ((HttpRequestBase) request).setURI(URI.create(relayed.toString()));
+
+    if (!DataFormatTools.isNullOrEmpty(innertubeRelayPass)) {
+      request.setHeader("X-Relay-Auth", innertubeRelayPass);
+    }
   }
 
   public void setCipherConfig(@Nullable String remotePass,
@@ -131,6 +193,8 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
         context.removeAttribute(Client.OAUTH_CLIENT_ATTRIBUTE);
       }
     }
+
+    applyInnertubeRelay(request);
 
 //    try {
 //      URI uri = new URIBuilder(request.getURI())

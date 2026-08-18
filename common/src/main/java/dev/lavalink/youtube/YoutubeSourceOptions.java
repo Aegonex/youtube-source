@@ -11,6 +11,8 @@ public class YoutubeSourceOptions {
     private String remoteCipherUserAgent;
     private String remotePoTokenUrl;
     private String remotePoTokenPassword;
+    private String remoteInnertubeUrl;
+    private String remoteInnertubePassword;
 
     public boolean isAllowSearch() {
         return allowSearch;
@@ -76,4 +78,25 @@ public class YoutubeSourceOptions {
     }
 
 
+
+    /**
+     * Routes innertube API calls through a relay on an address YouTube still
+     * trusts. Media downloads are untouched and keep coming from this host.
+     *
+     * @param url base url of the relay, or null to call YouTube directly.
+     * @param password shared secret the relay expects, if it requires one.
+     */
+    public YoutubeSourceOptions setRemoteInnertube(@Nullable String url, @Nullable String password) {
+        this.remoteInnertubeUrl = url;
+        this.remoteInnertubePassword = password;
+        return this;
+    }
+
+    public String getRemoteInnertubeUrl() {
+        return remoteInnertubeUrl;
+    }
+
+    public String getRemoteInnertubePassword() {
+        return remoteInnertubePassword;
+    }
 }

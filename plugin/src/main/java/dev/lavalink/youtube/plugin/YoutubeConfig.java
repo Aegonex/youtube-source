@@ -16,6 +16,7 @@ public class YoutubeConfig {
     private boolean allowDirectPlaylistIds = true;
     private YoutubeRemoteCipherConfig remoteCipher;
     private YoutubeRemotePoTokenConfig remotePot;
+    private YoutubeRemoteInnertubeConfig remoteInnertube;
     private String[] clients;
     private Map<String, ClientOptions> clientOptions = new HashMap<>();
     private YoutubeOauthConfig oauth = null;
@@ -90,6 +91,14 @@ public class YoutubeConfig {
 
     public void setRemotePot(YoutubeRemotePoTokenConfig remotePot) {
         this.remotePot = remotePot;
+    }
+
+    public YoutubeRemoteInnertubeConfig getRemoteInnertube() {
+        return remoteInnertube;
+    }
+
+    public void setRemoteInnertube(YoutubeRemoteInnertubeConfig remoteInnertube) {
+        this.remoteInnertube = remoteInnertube;
     }
 
 }

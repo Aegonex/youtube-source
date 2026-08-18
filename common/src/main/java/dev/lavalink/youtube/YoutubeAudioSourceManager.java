@@ -161,6 +161,9 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
         } else {
             this.cipherManager = new LocalSignatureCipherManager();
         }
+        if (!DataFormatTools.isNullOrEmpty(options.getRemoteInnertubeUrl())) {
+            contextFilter.setInnertubeRelay(options.getRemoteInnertubeUrl(), options.getRemoteInnertubePassword());
+        }
         if (!DataFormatTools.isNullOrEmpty(options.getRemotePoTokenUrl())) {
             this.remotePoToken = new RemotePoToken(options.getRemotePoTokenUrl(), options.getRemotePoTokenPassword());
         }

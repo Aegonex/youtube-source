@@ -166,6 +166,7 @@ public class YoutubePluginLoader implements AudioPlayerManagerConfiguration {
 
             YoutubeRemoteCipherConfig cipherConfig = youtubeConfig.getRemoteCipher();
             YoutubeRemotePoTokenConfig poTokenConfig = youtubeConfig.getRemotePot();
+            YoutubeRemoteInnertubeConfig innertubeConfig = youtubeConfig.getRemoteInnertube();
 
             if (cipherConfig != null && cipherConfig.getUrl() != null) {
                 log.info("Using remote cipher server with url \"{}\"", cipherConfig.getUrl());
@@ -175,6 +176,11 @@ public class YoutubePluginLoader implements AudioPlayerManagerConfiguration {
             if (poTokenConfig != null && poTokenConfig.getUrl() != null) {
                 log.info("Using remote poToken service with url \"{}\"", poTokenConfig.getUrl());
                 sourceOptions.setRemotePoToken(poTokenConfig.getUrl(), poTokenConfig.getPass());
+            }
+
+            if (innertubeConfig != null && innertubeConfig.getUrl() != null) {
+                log.info("Relaying innertube API calls via \"{}\"", innertubeConfig.getUrl());
+                sourceOptions.setRemoteInnertube(innertubeConfig.getUrl(), innertubeConfig.getPass());
             }
         }
 
